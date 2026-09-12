@@ -17,8 +17,8 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
         padding:22px;box-shadow:0 6px 24px rgba(31,58,95,.08);margin-bottom:14px}
   .brand{display:flex;align-items:center;gap:10px;margin-bottom:2px}
-  .brand .logo{width:34px;height:34px;border-radius:8px;background:var(--brand);color:#fff;
-        font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .brand .logo{width:44px;height:44px;border-radius:10px;object-fit:cover;
+        border:1px solid var(--line);background:#0a0a12}
   .brand .co{font-weight:700;font-size:15px;color:var(--brand)}
   .brand .sub{font-size:11px;color:var(--muted)}
   h1{font-size:17px;margin:16px 0 4px}
@@ -62,7 +62,7 @@
 
   <div class="card">
     <div class="brand">
-      <div class="logo">TT</div>
+      <img class="logo" src="logo.png" alt="Thompson Technologies LLC">
       <div>
         <div class="co">Thompson Technologies&nbsp;LLC</div>
         <div class="sub">Fund Recovery Monitoring</div>
