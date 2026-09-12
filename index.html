@@ -44,6 +44,17 @@
   .moved-list{text-align:left;font-size:12px;background:#fff;border:1px solid var(--line);
         border-radius:10px;padding:10px;margin-top:10px;word-break:break-all}
   .checked{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+  .ledger{margin-top:14px}
+  .ledger-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px 2px}
+  .tbl{width:100%;border-collapse:collapse;font-size:12.5px;background:#f7f9fc;
+       border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .tbl th{background:#eef1f6;color:var(--muted);font-size:10.5px;text-transform:uppercase;
+       letter-spacing:.3px;text-align:left;padding:8px 10px;font-weight:700}
+  .tbl td{padding:8px 10px;border-top:1px solid var(--line)}
+  .tbl .r{text-align:right}
+  .tbl tfoot td{font-weight:700;background:#eef1f6;border-top:2px solid #d7deea}
+  .tbl.pulled th{background:#fbe9e7;color:#8a2019}
+  .tbl.pulled tfoot td{background:#fbe9e7}
 </style>
 </head>
 <body>
@@ -71,6 +82,15 @@
       <div class="stat"><div class="k">Deposits in</div><div class="v" id="txc">—</div></div>
     </div>
 
+    <div class="ledger" id="ledger" style="display:none">
+      <div class="ledger-title">The transfers to the scammer</div>
+      <table class="tbl">
+        <thead><tr><th>Date &amp; time</th><th class="r">Amount</th><th class="r">Bitcoin</th></tr></thead>
+        <tbody id="origrows"></tbody>
+        <tfoot><tr><td>Total taken</td><td class="r" id="origtotusd"></td><td class="r" id="origtotbtc"></td></tr></tfoot>
+      </table>
+    </div>
+
     <div id="movedbox"></div>
 
     <button id="btn" onclick="check()">🔄 Check again now</button>
@@ -89,10 +109,59 @@
   var ADDR = "bc1qcc6wdgs88l6q0xgaa9t0zzfnruy9dlzdp8ymq7";
   var BASELINE_SATS = 2883115;      // what the scammer received
   var BASELINE_USD = "$2,243.81";   // approx value at the time
+
+  // The three transfers Beth was tricked into sending, Sep 11 2026
+  var TRANSFERS = [
+    { time:"Sep 11, 2026 · 12:58 PM", usd:"$858.95",   sats:1103199 },
+    { time:"Sep 11, 2026 · ~1:07 PM", usd:"$1,094.87", sats:1407467 },
+    { time:"Sep 11, 2026 · 1:28 PM",  usd:"$289.99",   sats:372449  }
+  ];
+
   document.getElementById('explorer').innerHTML =
     'Full public record: <a href="https://mempool.space/address/'+ADDR+'" target="_blank" rel="noopener">view on mempool.space →</a>';
 
   function fmtBTC(sats){ return (sats/1e8).toFixed(8).replace(/0+$/,'').replace(/\.$/,'') + " BTC"; }
+
+  function renderOriginal(){
+    var rows="", tot=0;
+    for(var i=0;i<TRANSFERS.length;i++){
+      var t=TRANSFERS[i]; tot+=t.sats;
+      rows+='<tr><td>'+t.time+'</td><td class="r">'+t.usd+'</td><td class="r">'+fmtBTC(t.sats)+'</td></tr>';
+    }
+    document.getElementById('origrows').innerHTML=rows;
+    document.getElementById('origtotusd').textContent=BASELINE_USD;
+    document.getElementById('origtotbtc').textContent=fmtBTC(tot);
+    document.getElementById('ledger').style.display='block';
+  }
+
+  function fmtDate(unix){ if(!unix) return "pending"; var d=new Date(unix*1000); return d.toLocaleString(); }
+
+  // When funds move, fetch the transactions and show what was pulled OUT
+  function renderPulled(){
+    fetch('https://mempool.space/api/address/'+ADDR+'/txs',{cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(txs){
+        var out=[];
+        txs.forEach(function(tx){
+          var isSender = (tx.vin||[]).some(function(v){ return v.prevout && v.prevout.scriptpubkey_address===ADDR; });
+          if(isSender){
+            var sentAway = (tx.vout||[]).reduce(function(s,o){ return o.scriptpubkey_address!==ADDR ? s+(o.value||0) : s; },0);
+            out.push({ time:fmtDate(tx.status && tx.status.block_time), sats:sentAway, txid:tx.txid });
+          }
+        });
+        if(!out.length) return;
+        var rows="", tot=0;
+        out.forEach(function(o){ tot+=o.sats;
+          rows+='<tr><td>'+o.time+'</td><td class="r">'+fmtBTC(o.sats)+'</td><td class="r"><a href="https://mempool.space/tx/'+o.txid+'" target="_blank" rel="noopener">view</a></td></tr>';
+        });
+        var html='<div class="ledger"><div class="ledger-title" style="color:#8a2019">Amounts pulled OUT by the scammer</div>'+
+          '<table class="tbl pulled"><thead><tr><th>Date &amp; time</th><th class="r">Amount pulled</th><th class="r">Proof</th></tr></thead>'+
+          '<tbody>'+rows+'</tbody>'+
+          '<tfoot><tr><td>Total pulled out</td><td class="r">'+fmtBTC(tot)+'</td><td></td></tr></tfoot></table></div>';
+        document.getElementById('movedbox').insertAdjacentHTML('beforeend', html);
+      })
+      .catch(function(){});
+  }
 
   function render(data){
     var c = data.chain_stats || {}, m = data.mempool_stats || {};
@@ -107,6 +176,8 @@
     stats.style.display = 'grid';
     document.getElementById('amt').textContent = fmtBTC(held);
     document.getElementById('txc').textContent = txcount;
+    movedbox.innerHTML = '';
+    renderOriginal();
 
     if(!moved){
       s.className = 'status safe';
@@ -120,6 +191,7 @@
         '<div class="detail">The money just left the scammer\'s wallet. Larry needs to update the FBI IC3 complaint right away with where it went. '+
         'Please tell Larry now.</div>';
       movedbox.innerHTML = '<div class="moved-list"><b>What to do:</b> Call/text Larry. He will report the new transaction to law enforcement so the receiving exchange can be alerted.</div>';
+      renderPulled();
     }
     var now = new Date();
     document.getElementById('checked').textContent = 'Last checked: ' + now.toLocaleString();
