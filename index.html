@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fund Status Check — Thompson Technologies</title>
+<style>
+  :root{
+    --ink:#1a2233; --muted:#5b6675; --line:#e5e9f0; --card:#ffffff; --bg:#eef1f6;
+    --safe:#137a43; --safe-bg:#e7f6ee; --alert:#b3261e; --alert-bg:#fbe9e7; --brand:#1f3a5f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+       display:flex;justify-content:center;padding:20px}
+  .wrap{width:100%;max-width:440px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:22px;box-shadow:0 6px 24px rgba(31,58,95,.08);margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .brand .logo{width:34px;height:34px;border-radius:8px;background:var(--brand);color:#fff;
+        font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .brand .co{font-weight:700;font-size:15px;color:var(--brand)}
+  .brand .sub{font-size:11px;color:var(--muted)}
+  h1{font-size:17px;margin:16px 0 4px}
+  p.lead{font-size:13.5px;color:var(--muted);line-height:1.5;margin:0 0 4px}
+  .status{border-radius:14px;padding:20px;text-align:center;margin:16px 0 6px}
+  .status.safe{background:var(--safe-bg)}
+  .status.alert{background:var(--alert-bg)}
+  .status.loading{background:#eef1f6}
+  .big{font-size:22px;font-weight:800;margin:6px 0 2px;letter-spacing:.2px}
+  .safe .big{color:var(--safe)} .alert .big{color:var(--alert)}
+  .emoji{font-size:34px;line-height:1}
+  .detail{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .stat{background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .stat .v{font-size:15px;font-weight:700;margin-top:2px}
+  button{width:100%;border:0;border-radius:12px;background:var(--brand);color:#fff;
+         font-size:15px;font-weight:700;padding:14px;margin-top:14px;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.6;cursor:default}
+  .foot{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.6}
+  a{color:var(--brand)}
+  .moved-list{text-align:left;font-size:12px;background:#fff;border:1px solid var(--line);
+        border-radius:10px;padding:10px;margin-top:10px;word-break:break-all}
+  .checked{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <div class="brand">
+      <div class="logo">TT</div>
+      <div>
+        <div class="co">Thompson Technologies&nbsp;LLC</div>
+        <div class="sub">Fund Recovery Monitoring</div>
+      </div>
+    </div>
+    <h1>Hi Beth &mdash; here's where your money stands.</h1>
+    <p class="lead">We're keeping an eye on the funds around the clock. Tap the button any time and this page will check the blockchain live and tell you, in plain English, whether anything has changed.</p>
+
+    <div id="status" class="status loading">
+      <div class="emoji">⏳</div>
+      <div class="big">Checking…</div>
+      <div class="detail">Reading the blockchain right now.</div>
+    </div>
+
+    <div class="grid" id="stats" style="display:none">
+      <div class="stat"><div class="k">Amount held</div><div class="v" id="amt">—</div></div>
+      <div class="stat"><div class="k">Deposits in</div><div class="v" id="txc">—</div></div>
+    </div>
+
+    <div id="movedbox"></div>
+
+    <button id="btn" onclick="check()">🔄 Check again now</button>
+    <div class="checked" id="checked"></div>
+  </div>
+
+  <div class="card foot">
+    Being watched on Beth's behalf by her brother, Larry, with Thompson Technologies LLC.<br>
+    Case references on file: FBI IC3, CFPB, and Maryland Attorney General.<br><br>
+    <span id="explorer"></span>
+  </div>
+
+</div>
+
+<script>
+  var ADDR = "bc1qcc6wdgs88l6q0xgaa9t0zzfnruy9dlzdp8ymq7";
+  var BASELINE_SATS = 2883115;      // what the scammer received
+  var BASELINE_USD = "$2,243.81";   // approx value at the time
+  document.getElementById('explorer').innerHTML =
+    'Full public record: <a href="https://mempool.space/address/'+ADDR+'" target="_blank" rel="noopener">view on mempool.space →</a>';
+
+  function fmtBTC(sats){ return (sats/1e8).toFixed(8).replace(/0+$/,'').replace(/\.$/,'') + " BTC"; }
+
+  function render(data){
+    var c = data.chain_stats || {}, m = data.mempool_stats || {};
+    var spent = (c.spent_txo_count||0) + (m.spent_txo_count||0) + (c.spent_txo_sum||0) + (m.spent_txo_sum||0);
+    var txcount = (c.tx_count||0) + (m.tx_count||0);
+    var held = (c.funded_txo_sum||0) - (c.spent_txo_sum||0);
+    var moved = spent > 0 || txcount > 3;
+
+    var s = document.getElementById('status');
+    var stats = document.getElementById('stats');
+    var movedbox = document.getElementById('movedbox');
+    stats.style.display = 'grid';
+    document.getElementById('amt').textContent = fmtBTC(held);
+    document.getElementById('txc').textContent = txcount;
+
+    if(!moved){
+      s.className = 'status safe';
+      s.innerHTML = '<div class="emoji">✅</div><div class="big">Your money is still safe</div>'+
+        '<div class="detail">All '+fmtBTC(BASELINE_SATS)+' (about '+BASELINE_USD+') is still sitting where the scammer left it. '+
+        'Nothing has moved. This is good — it means the funds can still be frozen if they ever move.</div>';
+      movedbox.innerHTML = '';
+    } else {
+      s.className = 'status alert';
+      s.innerHTML = '<div class="emoji">🚨</div><div class="big">The funds have MOVED</div>'+
+        '<div class="detail">The money just left the scammer\'s wallet. Larry needs to update the FBI IC3 complaint right away with where it went. '+
+        'Please tell Larry now.</div>';
+      movedbox.innerHTML = '<div class="moved-list"><b>What to do:</b> Call/text Larry. He will report the new transaction to law enforcement so the receiving exchange can be alerted.</div>';
+    }
+    var now = new Date();
+    document.getElementById('checked').textContent = 'Last checked: ' + now.toLocaleString();
+  }
+
+  function check(){
+    var btn = document.getElementById('btn');
+    btn.disabled = true; btn.textContent = 'Checking…';
+    fetch('https://mempool.space/api/address/'+ADDR, {cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw new Error('network'); return r.json(); })
+      .then(function(d){ render(d); })
+      .catch(function(){
+        var s=document.getElementById('status');
+        s.className='status loading';
+        s.innerHTML='<div class="emoji">⚠️</div><div class="big">Couldn\'t reach the blockchain</div>'+
+          '<div class="detail">Please check your internet and tap the button again.</div>';
+      })
+      .finally(function(){ btn.disabled=false; btn.textContent='🔄 Check again now'; });
+  }
+
+  check();
+</script>
+</body>
+</html>
